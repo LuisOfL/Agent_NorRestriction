@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antigravity Studio - Visual Studio Code + GGUF RTX 4050</title>
+  
+  <!-- Tipografía & Iconos -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Markdown Parser -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Monaco Editor (El motor oficial de Visual Studio Code) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+  <!-- Auto-redirección si se abrió accidentalmente como archivo local file:/// -->
+  <script>
+    if (window.location.protocol === "file:") {
+      window.location.href = "http://127.0.0.1:7860";
+    }
+  </script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="vscode-theme">
+  <div class="workbench">
+    
+    <!-- 1. ACTIVITY BAR (Barra de actividades lateral izquierda de 48px) -->
+    <nav class="activity-bar">
+      <div class="activity-top">
+        <button class="activity-icon active" id="act-explorer" title="Explorador de Archivos">
+          <i class="fa-regular fa-copy"></i>
+        </button>
+        <button class="activity-icon" id="act-settings" title="Configuración de GPU y Modelo GGUF">
+          <i class="fa-solid fa-microchip"></i>
+        </button>
+      </div>
+      <div class="activity-bottom">
+        <button class="activity-icon" id="act-toggle-agent" title="Alternar Panel de IA Antigravity">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
+      </div>
+    </nav>
+
+    <!-- 2. PRIMARY SIDEBAR (Panel Explorador / Ajustes) -->
+    <aside class="primary-sidebar" id="primary-sidebar">
+      
+      <!-- VISTA EXPLORADOR DE ARCHIVOS -->
+      <div class="sidebar-view" id="view-explorer">
+        <div class="sidebar-header">
+          <span class="view-title">EXPLORADOR</span>
+          <div class="view-actions">
+            <button id="btn-new-file" class="action-btn" title="Nuevo Archivo"><i class="fa-solid fa-file-circle-plus"></i></button>
+            <button id="btn-new-folder" class="action-btn" title="Nueva Carpeta"><i class="fa-solid fa-folder-plus"></i></button>
+            <button id="btn-refresh-tree" class="action-btn" title="Refrescar Explorador"><i class="fa-solid fa-rotate-right"></i></button>
+          </div>
+        </div>
+
+        <!-- Carpeta de Proyecto Abierta -->
+        <div class="folder-header-bar">
+          <div class="folder-info">
+            <i class="fa-solid fa-chevron-down"></i>
+            <span id="workspace-folder-name" class="folder-name">Cargando carpeta...</span>
+          </div>
+          <button id="btn-open-workspace" class="btn-open-folder-pill" title="Cambiar de Carpeta / Abrir Proyecto">
+            <i class="fa-solid fa-folder-open"></i> Abrir Carpeta
+          </button>
+        </div>
+
+        <!-- Árbol de Archivos -->
+        <div class="file-tree-container" id="file-tree-container">
+          <!-- Items generados dinámicamente -->
+        </div>
+      </div>
+
+      <!-- VISTA CONFIGURACIÓN DE GPU / MODELO -->
+      <div class="sidebar-view hidden" id="view-settings">
+        <div class="sidebar-header">
+          <span class="view-title">CONFIGURACIÓN GGUF & GPU</span>
+          <button id="btn-purge-vram-side" class="action-btn" title="Limpiar VRAM y eliminar procesos zombies">
+            <i class="fa-solid fa-broom"></i>
+          </button>
+        </div>
+
+        <div class="settings-content">
+          <!-- Telemetría de Hardware -->
+          <div class="settings-card">
+            <h4><i class="fa-solid fa-gauge-high"></i> Telemetría RTX 4050</h4>
+            <div class="telemetry-stat">
+              <span>VRAM: <b id="vram-text">0 / 6.1 GB</b></span>
+              <span id="vram-pct-text">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="vram-fill" style="width: 0%;"></div>
+            </div>
+            <div class="telemetry-stat" style="margin-top: 6px;">
+              <span>RAM Sistema: <b id="ram-text">0 / 16 GB</b></span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill ram-fill" id="ram-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Selección de Modelo -->
+          <div class="settings-card">
+            <h4><i class="fa-solid fa-brain"></i> Modelo GGUF Activo</h4>
+            <label class="setting-label">Modelo de Lenguaje (Texto):</label>
+            <select id="model-select" class="vscode-select"></select>
+
+            <div class="mmproj-box">
+              <label class="checkbox-label">
+                <input type="checkbox" id="enable-mmproj" checked>
+                <span>Proyector Multimodal (Visión)</span>
+              </label>
+              <select id="mmproj-select" class="vscode-select" style="margin-top:4px;"></select>
+            </div>
+
+            <div class="setting-row" style="margin-top:10px;">
+              <label>Capas en GPU (RTX 4050):</label>
+              <span id="gpu-layers-badge" class="badge-num">24</span>
+            </div>
+            <input type="range" id="gpu-layers-slider" min="0" max="60" value="24" class="vscode-slider">
+
+            <div class="setting-row">
+              <label>Ventana de Contexto:</label>
+              <select id="ctx-size-select" class="vscode-select-sm">
+                <option value="8192">8192</option>
+                <option value="16384" selected>16384 (Sin Límites / Ultra)</option>
+                <option value="32768">32768 (Contexto Máximo)</option>
+              </select>
+            </div>
+
+            <button id="btn-load-model" class="btn-vscode btn-primary-vscode" style="margin-top:12px;">
+              <i class="fa-solid fa-bolt"></i> Iniciar e Inyectar en GPU
+            </button>
+            <button id="btn-unload-model" class="btn-vscode btn-danger-vscode hidden" style="margin-top:12px;">
+              <i class="fa-solid fa-power-off"></i> Descargar Modelo
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- 3. EDITOR AREA (Área central de Visual Studio Code) -->
+    <main class="editor-area">
+      <!-- Barra de Pestañas (Tabs) -->
+      <div class="tabs-bar" id="tabs-bar">
+        <!-- Pestañas dinámicas -->
+      </div>
+
+      <!-- Barra de herramientas del archivo abierto -->
+      <div class="editor-toolbar" id="editor-toolbar">
+        <div class="file-path-breadcrumb" id="breadcrumb-path">Sin archivo abierto</div>
+        <div class="toolbar-actions">
+          <button id="btn-run-project" class="tool-btn" title="Ejecutar main.py o abrir app en Windows" style="color:#34d399; font-weight:600;">
+            <i class="fa-solid fa-play"></i> Probar / Ejecutar
+          </button>
+          <button id="btn-save-file" class="tool-btn" title="Guardar cambios (Ctrl+S)">
+            <i class="fa-regular fa-floppy-disk"></i> Guardar
+          </button>
+          <button id="btn-open-preview" class="tool-btn hidden" title="Previsualizar en el navegador">
+            <i class="fa-solid fa-globe"></i> Ver App
+          </button>
+        </div>
+      </div>
+
+      <!-- Contenedor de Monaco Editor -->
+      <div id="monaco-container" class="monaco-container"></div>
+
+      <!-- Pantalla de Bienvenida de VS Code (si no hay archivos abiertos) -->
+      <div class="welcome-screen" id="welcome-screen">
+        <div class="welcome-content">
+          <div class="welcome-logo">
+            <i class="fa-solid fa-bolt-lightning"></i>
+          </div>
+          <h2>Antigravity Code Studio</h2>
+          <p>Entorno Gráfico de Desarrollo con IA Local de Alto Rendimiento (RTX 4050 6GB)</p>
+
+          <div class="quick-links">
+            <div class="link-item" id="btn-welcome-open-folder">
+              <i class="fa-solid fa-folder-open"></i>
+              <div>
+                <strong>Abrir Carpeta de Proyecto...</strong>
+                <span>Elige o crea un proyecto en tu PC</span>
+              </div>
+            </div>
+            <div class="link-item" id="btn-welcome-ask-agent">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <div>
+                <strong>Pedir a la IA que cree una App...</strong>
+                <span>Genera una aplicación completa con un solo comando</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 4. SECONDARY SIDEBAR: AGENTE IA ANTIGRAVITY (Panel Derecho) -->
+    <section class="agent-panel" id="agent-panel">
+      <!-- Header del Agente -->
+      <div class="agent-header">
+        <div class="agent-title-box">
+          <i class="fa-solid fa-wand-magic-sparkles" style="color: #38bdf8;"></i>
+          <h3>Antigravity AI</h3>
+        </div>
+
+        <!-- Selector de Modo: Creador de Apps vs Chat Normal -->
+        <div class="mode-switch-container">
+          <button class="mode-pill active" id="mode-agent-btn" title="El modelo puede crear y modificar archivos en tu proyecto">
+            <i class="fa-solid fa-bolt"></i> Crear Apps
+          </button>
+          <button class="mode-pill" id="mode-chat-btn" title="Preguntas y conversación libre sin modificar archivos">
+            <i class="fa-solid fa-comments"></i> Pregunta Normal
+          </button>
+        </div>
+
+        <!-- Botón Conexión a Internet (RAG Web) -->
+        <button id="btn-toggle-web" class="btn-toggle-web active" title="Búsqueda Web en Vivo (RAG Web)">
+          <i class="fa-solid fa-globe"></i> <span>Web ON</span>
+        </button>
+
+        <button id="btn-clear-agent-chat" class="action-btn" title="Limpiar conversación">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </div>
+
+      <!-- Barra de Contexto Activo (Muestra qué archivo está leyendo la IA) -->
+      <div class="agent-context-bar" id="agent-context-bar">
+        <i class="fa-solid fa-eye" style="color:var(--vsc-cyan);"></i>
+        <span>Leyendo en pantalla: <b id="agent-context-filename">Ninguno (Abre un archivo para que lo analice)</b></span>
+      </div>
+
+      <!-- Historial de Conversación del Agente -->
+      <div class="agent-messages" id="agent-messages">
+        <div class="agent-welcome">
+          <div class="agent-avatar-welcome"><i class="fa-solid fa-robot"></i></div>
+          <h4>¿Qué quieres construir hoy?</h4>
+          <p>
+            En <b>Modo Crear Apps</b> puedo generar aplicaciones enteras (HTML/CSS/JS, Python, etc.) directamente en la carpeta abierta de tu proyecto.
+          </p>
+          <div class="sample-prompts">
+            <button class="sample-btn" data-prompt="Crea una aplicación web moderna de una calculadora científica con diseño futurista oscuro, efectos de sonido y responsive.">
+              🧮 Crear Calculadora Científica Futurista
+            </button>
+            <button class="sample-btn" data-prompt="Crea un juego clásico de Snake (la viborita) en HTML5 canvas con puntuación más alta y controles fluidos.">
+              🐍 Crear Juego de Snake en HTML5
+            </button>
+            <button class="sample-btn" data-prompt="Crea una aplicación de Lista de Tareas (Todo List) con categorías, filtros, modo oscuro y persistencia en LocalStorage.">
+              📝 Crear App de Tareas Inteligente
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerta de Continuar Generación -->
+      <div id="continue-banner" class="continue-banner hidden">
+        <span>Respuesta extensa pausada por límite de longitud.</span>
+        <button id="btn-continue-generation" class="btn-continue-sm">
+          <i class="fa-solid fa-forward-step"></i> Continuar
+        </button>
+      </div>
+
+      <!-- Input del Agente -->
+      <div class="agent-input-container">
+        <!-- Preview de Imagen si se adjunta -->
+        <div id="image-preview-box" class="image-preview-box hidden">
+          <div class="preview-thumbnail">
+            <img id="image-preview-img" src="" alt="Adjunto">
+            <button id="btn-cancel-image" class="btn-cancel-img">&times;</button>
+          </div>
+          <span class="preview-text">Imagen lista para visión</span>
+        </div>
+
+        <div class="agent-input-box">
+          <input type="file" id="image-input" accept="image/*" style="display:none;">
+          <button id="btn-upload-image" class="agent-attach-btn" title="Adjuntar imagen (o pega con Ctrl+V)">
+            <i class="fa-regular fa-image"></i>
+          </button>
+          
+          <textarea 
+            id="agent-textarea" 
+            placeholder="Pide una app o haz una pregunta... (Enter para enviar, Shift+Enter para salto)"
+            rows="1"
+          ></textarea>
+
+          <div class="agent-send-actions">
+            <button id="btn-stop-agent" class="agent-stop-btn hidden" title="Detener generación">
+              <i class="fa-solid fa-circle-stop"></i>
+            </button>
+            <button id="btn-send-agent" class="agent-send-btn" title="Enviar">
+              <i class="fa-solid fa-arrow-up"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- 5. STATUS BAR INFERIOR (Estilo VS Code, 22px) -->
+  <footer class="status-bar">
+    <div class="status-left">
+      <div class="status-item"><i class="fa-solid fa-code-branch"></i> <span>main</span></div>
+      <div class="status-item" id="status-active-file"><span>Sin archivo activo</span></div>
+    </div>
+    <div class="status-right">
+      <div class="status-item" id="status-gpu-pill"><i class="fa-solid fa-microchip"></i> <span id="status-vram-text">RTX 4050</span></div>
+      <div class="status-item" id="status-speed-pill"><i class="fa-solid fa-gauge-high"></i> <span id="status-speed-text">0.0 t/s</span></div>
+      <div class="status-item"><span>UTF-8</span></div>
+    </div>
+  </footer>
+
+  <!-- MODAL VISUAL PARA ABRIR CARPETA / CAMBIAR DIRECTORIO -->
+  <div id="folder-picker-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-folder-open" style="color:var(--vsc-cyan)"></i>
+          <span>Abrir Carpeta de Proyecto</span>
+        </div>
+        <button id="modal-btn-close" class="modal-close-icon">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Barra de navegación de ruta -->
+        <div class="path-nav-bar">
+          <button id="modal-btn-up" class="btn-nav" title="Subir un nivel"><i class="fa-solid fa-arrow-up"></i></button>
+          <input type="text" id="modal-path-input" class="modal-path-input" placeholder="Ruta de la carpeta...">
+          <button id="modal-btn-go" class="btn-nav" title="Ir a la ruta"><i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+
+        <!-- Accesos rápidos -->
+        <div class="shortcuts-row" id="modal-shortcuts-container">
+          <!-- Botones de Escritorio, Descargas, etc. -->
+        </div>
+
+        <!-- Lista de carpetas -->
+        <div class="subfolders-list" id="modal-subfolders-container">
+          <!-- Carpetas hijas listadas aquí -->
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <div class="footer-left">
+          <button id="modal-btn-native-dialog" class="btn-vscode btn-secondary-vscode" title="Abrir selector nativo de Windows">
+            <i class="fa-brands fa-windows"></i> Selector Windows
+          </button>
+          <button id="modal-btn-create-subfolder" class="btn-vscode btn-secondary-vscode">
+            <i class="fa-solid fa-folder-plus"></i> Nueva Carpeta
+          </button>
+        </div>
+        <div class="footer-right">
+          <button id="modal-btn-cancel" class="btn-vscode btn-secondary-vscode">Cancelar</button>
+          <button id="modal-btn-confirm" class="btn-vscode btn-primary-vscode">
+            <i class="fa-solid fa-check"></i> Seleccionar Esta Carpeta
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
